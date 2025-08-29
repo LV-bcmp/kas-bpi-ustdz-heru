@@ -185,8 +185,11 @@
 </main>
 
 <script>
-    // Data murid (username = password)
-    const muridData = [
+    // Key LocalStorage
+    const STORAGE_KEY = 'kasMuridData';
+
+    // Data murid default (username = password)
+    const defaultMuridData = [
         { username: "01", password: "010101", nama: "ALIF FAUZAN PERDANA", kas: 0, mingguTerbayar: 0 },
         { username: "02", password: "020202", nama: "AHNAF KURNIA RADITYA", kas: 0, mingguTerbayar: 0 },
         { username: "03", password: "030303", nama: "FARHAN MUKTI WIBOWO", kas: 0, mingguTerbayar: 0 },
@@ -196,7 +199,27 @@
         { username: "07", password: "070707", nama: "ZAKY AMALUL ARIFIN ADITYA", kas: 0, mingguTerbayar: 0 }
     ];
 
-    let loggedInUser    = null;
+    // Ambil data murid dari LocalStorage atau pakai default
+    function loadMuridData() {
+        const data = localStorage.getItem(STORAGE_KEY);
+        if (data) {
+            try {
+                return JSON.parse(data);
+            } catch {
+                return [...defaultMuridData];
+            }
+        } else {
+            return [...defaultMuridData];
+        }
+    }
+
+    // Simpan data murid ke LocalStorage
+    function saveMuridData(data) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    }
+
+    let muridData = loadMuridData();
+    let loggedInUser   = null;
 
     // Navigasi menu
     const navMenu = document.getElementById('navMenu');
@@ -219,7 +242,7 @@
         showSection(authSection);
     });
     bayarBtn.addEventListener('click', () => {
-        if (!loggedInUser   ) {
+        if (!loggedInUser ) {
             alert("Silakan login terlebih dahulu!");
             setActiveMenu(authBtn);
             showSection(authSection);
@@ -227,14 +250,14 @@
         }
         setActiveMenu(bayarBtn);
         showSection(bayarSection);
-        userDisplay.textContent = loggedInUser   .nama;
+        userDisplay.textContent = loggedInUser .nama;
         bayarMessage.textContent = "";
         warningMessage.textContent = "";
         document.getElementById('amount').value = "";
         checkPaymentStatus();
     });
     totalBtn.addEventListener('click', () => {
-        if (!loggedInUser   ) {
+        if (!loggedInUser ) {
             alert("Silakan login terlebih dahulu!");
             setActiveMenu(authBtn);
             showSection(authSection);
@@ -261,6 +284,13 @@
         if (belumBayar >= 35) {
             user.kas = 0;
             user.mingguTerbayar = 0;
+            // Update di muridData dan simpan
+            const idx = muridData.findIndex(m => m.username === user.username);
+            if (idx !== -1) {
+                muridData[idx].kas = 0;
+                muridData[idx].mingguTerbayar = 0;
+                saveMuridData(muridData);
+            }
         }
     }
 
@@ -268,6 +298,9 @@
     function login() {
         const username = document.getElementById('username').value.trim();
         const password = document.getElementById('password').value.trim();
+
+        // Refresh data murid dari storage agar up to date
+        muridData = loadMuridData();
 
         const user = muridData.find(m => m.username === username && m.password === password);
         if (user) {
@@ -279,14 +312,14 @@
 
             resetIfOverdue(user, mingguSekarang);
 
-            loggedInUser    = user;
+            loggedInUser  = user;
             authMessage.style.color = 'green';
             authMessage.textContent = `Login berhasil! Selamat datang, ${user.nama}.`;
             navMenu.style.display = 'flex';
             userNameDisplay.textContent = user.nama;
             setActiveMenu(bayarBtn);
             showSection(bayarSection);
-            userDisplay.textContent = loggedInUser   .nama;
+            userDisplay.textContent = loggedInUser .nama;
             bayarMessage.textContent = "";
             warningMessage.textContent = "";
             document.getElementById('amount').value = "";
@@ -313,20 +346,33 @@
             return;
         }
 
-        loggedInUser   .kas += amount;
-        // Update minggu terbayar sesuai kelipatan 5k
-        loggedInUser   .mingguTerbayar += amount / 5000;
+        // Update data loggedInUser  di muridData
+        const userIndex = muridData.findIndex(m => m.username === loggedInUser .username);
+        if (userIndex !== -1) {
+            muridData[userIndex].kas += amount;
+            muridData[userIndex].mingguTerbayar += amount / 5000;
 
-        bayarMessage.style.color = 'green';
-        bayarMessage.textContent = `Pembayaran kas sebesar Rp${amount.toLocaleString()} berhasil! Total kas Anda sekarang Rp${loggedInUser   .kas.toLocaleString()}.`;
+            // Update loggedInUser  juga
+            loggedInUser .kas = muridData[userIndex].kas;
+            loggedInUser .mingguTerbayar = muridData[userIndex].mingguTerbayar;
 
-        amountInput.value = "";
-        warningMessage.textContent = "";
+            // Simpan ke LocalStorage
+            saveMuridData(muridData);
+
+            bayarMessage.style.color = 'green';
+            bayarMessage.textContent = `Pembayaran kas sebesar Rp${amount.toLocaleString()} berhasil! Total kas Anda sekarang Rp${loggedInUser .kas.toLocaleString()}.`;
+
+            amountInput.value = "";
+            warningMessage.textContent = "";
+        } else {
+            bayarMessage.style.color = 'red';
+            bayarMessage.textContent = "Terjadi kesalahan, user tidak ditemukan!";
+        }
     }
 
     // Fungsi logout
     function logout() {
-        loggedInUser    = null;
+        loggedInUser  = null;
         authMessage.textContent = "";
         userNameDisplay.textContent = "";
         document.getElementById('username').value = "";
@@ -338,6 +384,9 @@
 
     // Render tabel total kas semua murid
     function renderKasTable() {
+        // Ambil data terbaru dari LocalStorage
+        muridData = loadMuridData();
+
         const tbody = document.getElementById('kasTableBody');
         tbody.innerHTML = "";
         let totalKas = 0;
@@ -357,7 +406,6 @@
 
     // Fungsi cek status pembayaran minggu
     function checkPaymentStatus() {
-        // Hitung minggu berjalan sejak awal tahun
         const now = new Date();
         const startOfYear = new Date(now.getFullYear(), 0, 1);
         const diffDays = Math.floor((now - startOfYear) / (1000 * 60 * 60 * 24));
@@ -365,8 +413,7 @@
 
         resetIfOverdue(loggedInUser , mingguSekarang);
 
-        // Hitung berapa minggu belum dibayar
-        const belumBayar = mingguSekarang - loggedInUser   .mingguTerbayar;
+        const belumBayar = mingguSekarang - loggedInUser .mingguTerbayar;
         if (belumBayar > 0) {
             warningMessage.textContent = `ANDA BELUM MEMBAYAR KAS SELAMA ${belumBayar} MINGGU`;
         } else {
